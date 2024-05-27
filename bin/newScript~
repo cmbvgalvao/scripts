@@ -1,8 +1,7 @@
 #!/bin/bash
 #
-# createScript--Given a name, creates a template for a new script, 
-# gives it 755 permissions and opens the file in vim
-# Can receive a path as argument otherwise creates the file in the current directory.
+#createScript--Given a name, creates a template for a new script and gives it 755 permissions.
+#Can receive a path as argument.
 
 
 path="$1"
