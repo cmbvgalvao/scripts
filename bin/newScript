@@ -4,9 +4,9 @@
 #Can receive a path as argument.
 
 
-path=$1
+path="$1"
 
-if [ "$path" == "" ] ; then
+if [ "$path" = "" ] ; then
   path="$(pwd)"
 fi
 
@@ -17,7 +17,7 @@ createScript(){
   vim "$1/$2"
 }
 
-echo -n "Enter script name: "
+printf "Enter script name: "
 read input
 if [ -e "$path/$input" ] ; then
   echo "File already exists."
