@@ -14,8 +14,7 @@ createScript(){
   touch "$1/$2"
   chmod 755 "$1/$2"
   echo "#!/bin/bash" >> "$1/$2"
-  echo "Script $2 created at $1"
-  exit 0
+  vim "$1/$2"
 }
 
 echo -n "Enter script name: "
