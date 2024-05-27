@@ -1,0 +1,28 @@
+#!/bin/bash
+#
+#createScript--Given a name, creates a template for a new script and gives it 755 permissions.
+#Can receive a path as argument.
+
+
+path=$1
+
+if [ "$path" == "" ] ; then
+  path="$(pwd)"
+fi
+
+createScript(){
+  touch "$1/$2"
+  chmod 755 "$1/$2"
+  echo "#!/bin/bash" >> "$1/$2"
+  echo "Script $2 created at $1"
+  exit 0
+}
+
+echo -n "Enter script name: "
+read input
+if [ -e "$path/$input" ] ; then
+  echo "File already exists."
+  exit 1
+else 
+  createScript "$path" "$input"
+fi
