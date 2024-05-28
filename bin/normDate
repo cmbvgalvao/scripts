@@ -21,12 +21,13 @@ monthNumToName()
 }
 
 if [ "$BASH_SOURCE" == "$0" ] ; then
-  if [ $# -ne 3 ] ; then
+  if [ $# -eq 1 ]; then # To compensate for / or - formats
+    set -- $(echo $1 | sed 's/[\/\-]/ /g')
+  elif [ $# -ne 3 ] ; then
     echo "Usage: $0 month day year" >&2
     echo "Formats are February 13 1987 and 2 13 1987" >&2
     exit 1
-  fi
-  if [ $3 -le 999 ] ; then
+  elif [ $3 -le 999 ] ; then
     echo "$0: Expected 4-digit year value." >&2
     exit 1
   fi
