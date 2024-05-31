@@ -19,10 +19,10 @@ createScript(){
 }
 
 printf "Enter script name: "
-read input
-if [ -e "$path/$input" ] ; then
+read name
+if [ -e "$path/$name" ] ; then
   echo "File already exists."
   exit 1
 else 
-  createScript "$path" "$input"
+  createScript "$path" "$name"
 fi
