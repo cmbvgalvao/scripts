@@ -1,4 +1,7 @@
 #!/bin/bash
+#
+# gitPush--To be run in a git repository. Receives a commit message, 
+# adds, commits and pushes to the repository
 
 
 echo "Enter commit message: "
