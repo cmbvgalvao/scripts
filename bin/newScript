@@ -2,7 +2,7 @@
 #
 # newScript--Given a name, creates a template for a new script, 
 # gives it the appropriate permissions and opens the file in vim.
-# Can receive a path as argument otherwise creates the file in the current directory.
+# Can receive a path as argument, otherwise creates the file in the current directory.
 
 
 path="$1"
