@@ -1,0 +1,4 @@
+#!/bin/bash
+
+(echo; echo 'eval "$(/usr/local/bin/brew shellenv)"') >> /Users/academiacodigo/.zprofile
+    eval "$(/usr/local/bin/brew shellenv)"
