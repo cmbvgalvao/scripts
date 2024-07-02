@@ -1,0 +1,8 @@
+#!/bin/bash
+LOCAL_FULLNAME="Moda Lisboa"     # The local user's full name
+LOCAL_SHORTNAME="modalisboa"     # The local user's shortname
+LOCAL_PASSWORD="ModaLisboa"      # The local user's password
+
+# Create a local admin user account
+sudo sysadminctl -addUser "$LOCAL_SHORTNAME" -fullName "$LOCAL_FULLNAME" -password "$LOCAL_PASSWORD"
+sudo reboot now
