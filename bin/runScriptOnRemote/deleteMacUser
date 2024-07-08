@@ -1,5 +1,5 @@
 #!/bin/bash
 
-USERNAME=""
+USERNAME="$1"
 sudo sysadminctl -deleteUser "$USERNAME"
 sudo reboot now
