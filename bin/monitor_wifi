@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# Wireless interface to monitor
+INTERFACE="wlp3s0"
+
+# Log file in the script's location
+LOG_FILE="$(dirname "$(realpath "$0")")/wifi_changes.log"
+
+# Function to get the currently connected SSID
+get_connected_ssid() {
+    iw dev "$INTERFACE" link | grep "Connected to" | awk '{print $3}'
+}
+
+# Store the initial SSID
+previous_ssid=$(get_connected_ssid)
+
+# Log the initial status
+echo "Monitoring WiFi connection on $INTERFACE..."
+echo "$(date): Initial connection: ${previous_ssid:-None}" | tee -a "$LOG_FILE"
+
+# Infinite loop to monitor changes
+while true; do
+    # Get the current SSID
+    current_ssid=$(get_connected_ssid)
+    
+    # Check for changes in the connection
+    if [ "$current_ssid" != "$previous_ssid" ]; then
+        if [ -z "$current_ssid" ]; then
+            message="$(date): Disconnected from WiFi."
+        else
+            message="$(date): Connected to WiFi: $current_ssid"
+        fi
+
+        # Output to console and log file
+        echo "$message" | tee -a "$LOG_FILE"
+        
+        # Update the previous SSID
+        previous_ssid="$current_ssid"
+    fi
+
+    # Wait before the next check
+    sleep 5
+done
+
