@@ -1,0 +1,35 @@
+##!/bin/bash
+
+# Define the home directory (you can adjust this if needed)
+USER_HOME="/home/$(whoami)"
+
+# Check if the public key argument is provided
+if [ -z "$1" ]; then
+  echo "Usage: $0 <path_to_public_key>"
+  exit 1
+fi
+
+PUBLIC_KEY_PATH="$1"
+
+# Verify the public key file exists
+if [ ! -f "$PUBLIC_KEY_PATH" ]; then
+  echo "Error: Public key file '$PUBLIC_KEY_PATH' does not exist."
+  exit 2
+fi
+
+# Create the .ssh directory if it doesn't exist
+mkdir -p "$USER_HOME/.ssh"
+
+# Append the public key to the authorized_keys file
+cat "$PUBLIC_KEY_PATH" >> "$USER_HOME/.ssh/authorized_keys"
+
+# Set the appropriate permissions
+chmod 700 "$USER_HOME/.ssh"
+chmod 600 "$USER_HOME/.ssh/authorized_keys"
+
+# Change the owner of the directory and file to the current user
+chown -R $(whoami):$(whoami) "$USER_HOME/.ssh"
+
+# Print a message indicating that the key has been added
+echo "Public key has been added to authorized_keys with correct permissions."
+!/bin/bash

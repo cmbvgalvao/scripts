@@ -1,0 +1,10 @@
+#!/bin/bash
+
+for dir in /home/*/; do
+    user=$(basename "$dir")
+    if [ -f "/home/$user/.gitconfig" ]; then
+        sudo chown "$user:$user" "/home/$user/.gitconfig"
+    else
+        echo "No .gitconfig found for user $user"
+    fi
+done
