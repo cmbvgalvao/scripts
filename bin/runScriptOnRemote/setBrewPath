@@ -1,4 +1,5 @@
 #!/bin/bash
-
-(echo; echo 'eval "$(/usr/local/bin/brew shellenv)"') >> /Users/academiacodigo/.zprofile
-    eval "$(/usr/local/bin/brew shellenv)"
+sudo chown -R $(whoami) /opt/homebrew
+(echo; echo 'eval "$(/opt/homebrew/bin/brew shellenv)"') >> ~/.zshrc
+eval "$(/opt/homebrew/bin/brew shellenv)"
+source .zshrc

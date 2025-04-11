@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# List of users to exclude
+EXCLUDE_USERS=("user1" "user2")
+
+# Loop through all system users
+for user in $(cut -f1 -d: /etc/passwd); do
+  if [[ ! " ${EXCLUDE_USERS[@]} " =~ " ${user} " ]]; then
+    # Delete user and their home directory
+    userdel -r "$user"
+  fi
+done
+
