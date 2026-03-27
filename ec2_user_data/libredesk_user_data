@@ -1,0 +1,76 @@
+#!/bin/bash
+
+# 1. Set non-interactive mode
+export DEBIAN_FRONTEND=noninteractive
+
+# 2. Update and Upgrade
+echo "--- Starting System Update ---"
+apt-get update -y && apt-get upgrade -y
+
+# 3. Install Fail2ban
+echo "--- Installing Fail2ban ---"
+apt-get install -y fail2ban
+cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local
+systemctl start fail2ban
+systemctl enable fail2ban
+
+# 4. Install Docker Engine
+echo "--- Installing Docker ---"
+apt-get install -y ca-certificates curl gnupg
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+chmod a+r /etc/apt/keyrings/docker.gpg
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+apt-get update -y
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+systemctl enable docker
+systemctl start docker
+usermod -aG docker ubuntu
+
+# 5. Install Nginx and Certbot
+echo "--- Installing Nginx & Certbot ---"
+apt-get install -y nginx python3-certbot-nginx
+
+# 6. Configure Nginx Reverse Proxy
+# We create a config that listens on Port 80 and forwards to Docker Port 9000
+cat <<EOF > /etc/nginx/sites-available/libredesk
+server {
+    listen 80;
+    server_name _;  # Accepts any domain name initially
+
+    location / {
+        proxy_pass http://localhost:9000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+EOF
+
+# Enable the configuration and remove the default
+ln -s /etc/nginx/sites-available/libredesk /etc/nginx/sites-enabled/
+rm /etc/nginx/sites-enabled/default
+
+# Test and Restart Nginx
+nginx -t
+systemctl restart nginx
+
+# 7. Deploy LibreDesk
+echo "--- Deploying LibreDesk ---"
+mkdir -p /opt/libredesk
+cd /opt/libredesk
+
+curl -LO https://github.com/abhinavxd/libredesk/raw/main/docker-compose.yml
+curl -LO https://github.com/abhinavxd/libredesk/raw/main/config.sample.toml
+cp config.sample.toml config.toml
+
+docker compose up -d
+
+echo "--- User Data Script Completed Successfully ---"
