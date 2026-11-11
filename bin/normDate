@@ -1,4 +1,5 @@
 #!/bin/bash
+# Exercise typed in from "Wicked Cool Shell Scripts" by Dave Taylor (No Starch Press); not covered by this repo's MIT license.
 #
 # normDate--Normalizes month field in date specifications to three letters,
 # first letter capitalized. A helper function for the script valid-date.
