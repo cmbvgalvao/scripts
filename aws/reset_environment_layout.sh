@@ -10,7 +10,6 @@ reset_environment_layout() {
     echo $preferences
     # Remove windowLayout preferences
     modified_preferences=$(echo "$preferences" | jq 'del(.windowLayout)')
-    $modified_preferences
     # Update environment with modified preferences
     aws cloud9 update-environment --environment-id "$1" --cli-input-json "{\"managedCredentials\":$modified_preferences}"
 }

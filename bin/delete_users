@@ -3,8 +3,8 @@
 # List of users to exclude
 EXCLUDE_USERS=("user1" "user2")
 
-# Loop through all system users
-for user in $(cut -f1 -d: /etc/passwd); do
+# Loop through normal users only (UID 1000-65533): never root, system accounts or "nobody"
+for user in $(awk -F: '$3 >= 1000 && $3 < 65534 {print $1}' /etc/passwd); do
   if [[ ! " ${EXCLUDE_USERS[@]} " =~ " ${user} " ]]; then
     # Delete user and their home directory
     userdel -r "$user"
