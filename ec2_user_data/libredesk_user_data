@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Fill these in before launching the instance.
+# DOMAIN must already point at the server (A record) for HTTPS to be set up.
+DOMAIN=""                      # e.g. help.example.com
+CERT_EMAIL=""                  # for Let's Encrypt expiry notices
+LIBREDESK_VERSION="v2.9.2"     # a release tag, not main
+
 # 1. Set non-interactive mode
 export DEBIAN_FRONTEND=noninteractive
 
@@ -42,7 +48,7 @@ apt-get install -y nginx python3-certbot-nginx
 cat <<EOF > /etc/nginx/sites-available/libredesk
 server {
     listen 80;
-    server_name _;  # Accepts any domain name initially
+    server_name ${DOMAIN:-_};
 
     location / {
         proxy_pass http://localhost:9000;
@@ -65,12 +71,36 @@ systemctl restart nginx
 # 7. Deploy LibreDesk
 echo "--- Deploying LibreDesk ---"
 mkdir -p /opt/libredesk
-cd /opt/libredesk
+cd /opt/libredesk || exit 1
 
-curl -LO https://github.com/abhinavxd/libredesk/raw/main/docker-compose.yml
-curl -LO https://github.com/abhinavxd/libredesk/raw/main/config.sample.toml
+# Pinned release, not the moving main branch
+curl -fLO "https://github.com/abhinavxd/libredesk/raw/${LIBREDESK_VERSION}/docker-compose.yml"
+curl -fLO "https://github.com/abhinavxd/libredesk/raw/${LIBREDESK_VERSION}/config.sample.toml"
 cp config.sample.toml config.toml
 
+# Same image version as the files, and the app reachable only through nginx
+sed -i "s#libredesk/libredesk:latest#libredesk/libredesk:${LIBREDESK_VERSION}#" docker-compose.yml
+sed -i 's#"9000:9000"#"127.0.0.1:9000:9000"#' docker-compose.yml
+
+# Fresh secrets instead of the sample's published ones
+DB_PASSWORD=$(openssl rand -hex 24)
+ADMIN_PASSWORD=$(openssl rand -base64 18)
+sed -i "s#^encryption_key = .*#encryption_key = \"$(openssl rand -hex 16)\"#" config.toml
+sed -i "s#^password = \"libredesk\"#password = \"${DB_PASSWORD}\"#" config.toml
+printf 'POSTGRES_PASSWORD=%s\nLIBREDESK_SYSTEM_USER_PASSWORD=%s\n' "$DB_PASSWORD" "$ADMIN_PASSWORD" > .env
+chmod 600 config.toml .env
+echo "$ADMIN_PASSWORD" > /root/libredesk-admin-password.txt
+chmod 600 /root/libredesk-admin-password.txt
+
 docker compose up -d
+
+# 8. HTTPS
+if [ -n "$DOMAIN" ] && [ -n "$CERT_EMAIL" ]; then
+  echo "--- Requesting a certificate for $DOMAIN ---"
+  certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$CERT_EMAIL" --redirect
+else
+  echo "--- DOMAIN/CERT_EMAIL not set: serving plain HTTP. Run certbot --nginx later. ---"
+fi
+echo "Admin (System user) password saved in /root/libredesk-admin-password.txt"
 
 echo "--- User Data Script Completed Successfully ---"

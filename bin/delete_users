@@ -1,13 +1,31 @@
 #!/bin/bash
+# delete_users - delete every normal account (UID 1000-65533) except the ones listed.
+# Dry run by default: it only lists what would be deleted. Add --yes to delete.
+# Usage: sudo ./delete_users [--yes]
 
-# List of users to exclude
+# Accounts to keep (edit before use). Root, system accounts, "nobody", the
+# current user and the user who ran sudo are always kept.
 EXCLUDE_USERS=("user1" "user2")
 
-# Loop through normal users only (UID 1000-65533): never root, system accounts or "nobody"
+if [[ " ${EXCLUDE_USERS[*]} " == *" user1 "* || " ${EXCLUDE_USERS[*]} " == *" user2 "* ]]; then
+  echo "Edit EXCLUDE_USERS first: it still has the placeholders user1/user2." >&2
+  exit 1
+fi
+
+KEEP=("${EXCLUDE_USERS[@]}" "$(id -un)" "${SUDO_USER:-}")
+DRY_RUN=true
+[[ "${1:-}" == "--yes" ]] && DRY_RUN=false
+
 for user in $(awk -F: '$3 >= 1000 && $3 < 65534 {print $1}' /etc/passwd); do
-  if [[ ! " ${EXCLUDE_USERS[@]} " =~ " ${user} " ]]; then
-    # Delete user and their home directory
+  keep=false
+  for k in "${KEEP[@]}"; do
+    [[ "$user" == "$k" ]] && keep=true
+  done
+  $keep && continue
+  if $DRY_RUN; then
+    echo "Would delete: $user (and its home folder). Run with --yes to delete."
+  else
+    echo "Deleting $user"
     userdel -r "$user"
   fi
 done
-

@@ -24,6 +24,35 @@ DELEGATES=("admin@example.com")
 GAM="$HOME/bin/gamadv-xtd3/gam"
 
 # ==========================================
+# CHECKS (nothing is changed until these pass)
+# ==========================================
+for v in TARGET_EMAIL ARCHIVE_EMAIL USER_FIRST_NAME USER_LAST_NAME; do
+    if [ -z "${!v}" ]; then
+        echo "Set $v in the configuration section first." >&2
+        exit 1
+    fi
+done
+if [[ " $TARGET_EMAIL $ARCHIVE_EMAIL ${DELEGATES[*]} " == *"@example.com "* ]]; then
+    echo "The configuration still has example.com addresses. Replace them first." >&2
+    exit 1
+fi
+if [ ! -x "$GAM" ]; then
+    echo "GAM not found at $GAM" >&2
+    exit 1
+fi
+
+# Stop at the first failed GAM command and say where, so a half-done
+# cut-over (group renamed, no new user) never carries on silently.
+STEP="checks"
+gam_run() {
+    if ! "$GAM" "$@"; then
+        echo "!!! GAM failed during step: $STEP" >&2
+        echo "!!! Stopped. Check the group, alias and user in the Admin console before re-running." >&2
+        exit 1
+    fi
+}
+
+# ==========================================
 # PHASE 1: THE CUT-OVER
 # ==========================================
 
@@ -33,23 +62,27 @@ echo "Target User Name: $USER_FIRST_NAME $USER_LAST_NAME"
 echo "=========================================="
 
 echo ">>> [1/7] Renaming Group to Archive..."
-$GAM update group "$TARGET_EMAIL" email "$ARCHIVE_EMAIL"
+STEP="[1/7] Renaming Group to Archive"
+gam_run update group "$TARGET_EMAIL" email "$ARCHIVE_EMAIL"
 
 echo ">>> [2/7] Securing Archive (Read-Only Mode)..."
+STEP="[2/7] Securing Archive (Read-Only Mode)"
 # 'Managers Can Post' prevents public/team spam. 'Members Can View' keeps history accessible.
-$GAM update group "$ARCHIVE_EMAIL" who_can_post_message ALL_MANAGERS_CAN_POST who_can_view_group ALL_MEMBERS_CAN_VIEW
+gam_run update group "$ARCHIVE_EMAIL" who_can_post_message ALL_MANAGERS_CAN_POST who_can_view_group ALL_MEMBERS_CAN_VIEW
 
 echo ">>> [3/7] Removing Automatic Alias..."
+STEP="[3/7] Removing Automatic Alias"
 # We must delete the alias immediately so the username is free.
-$GAM delete alias "$TARGET_EMAIL"
+gam_run delete alias "$TARGET_EMAIL"
 
 echo ">>> Waiting 30 seconds for Alias release (Google Directory)..."
 sleep 30
 
 echo ">>> [4/7] Creating New User Account..."
+STEP="[4/7] Creating New User Account"
 # Uses the variables configured above
 # 'changepassword off' is CRITICAL to make the account active immediately
-$GAM create user "$TARGET_EMAIL" firstname "$USER_FIRST_NAME" lastname "$USER_LAST_NAME" password random changepassword off
+gam_run create user "$TARGET_EMAIL" firstname "$USER_FIRST_NAME" lastname "$USER_LAST_NAME" password random changepassword off
 
 echo ">>> Waiting 30 seconds for User propagation (CRITICAL)..."
 # This wait prevents the "User does not exist" error during delegation
@@ -60,6 +93,7 @@ sleep 30
 # ==========================================
 
 echo ">>> [5/7] Assigning Access to Delegates..."
+STEP="[5/7] Assigning Access to Delegates"
 
 for user in "${DELEGATES[@]}"; do
     echo "------------------------------------------"
@@ -68,24 +102,25 @@ for user in "${DELEGATES[@]}"; do
     # 1. Email Delegation
     # Grants access to the inbox via the User Icon > Switch Account
     echo "   > Granting Inbox Delegation..."
-    $GAM user "$TARGET_EMAIL" delegate to "$user"
+    gam_run user "$TARGET_EMAIL" delegate to "$user"
     
     # 2. Calendar Permission (ACL)
     # This grants the user the RIGHT to edit the calendar
     echo "   > Granting Calendar Editor Permissions..."
-    $GAM calendar "$TARGET_EMAIL" add editor "$user"
+    gam_run calendar "$TARGET_EMAIL" add editor "$user"
     
     # 3. Calendar Subscription (Force add to view)
     # This forces the calendar to appear in their 'My Calendars' list
     # We set a distinct color (Teal) so it stands out
     echo "   > Subscribing user to the Calendar..."
-    $GAM user "$user" add calendar "$TARGET_EMAIL" selected true backgroundColor "#16a765"
+    gam_run user "$user" add calendar "$TARGET_EMAIL" selected true backgroundColor "#16a765"
     
 done
 
 echo "------------------------------------------"
 echo ">>> [6/7] Verifying Setup..."
-$GAM user "$TARGET_EMAIL" show delegates
+STEP="[6/7] Verifying Setup"
+gam_run user "$TARGET_EMAIL" show delegates
 
 echo "=========================================="
 echo "MIGRATION COMPLETE!"

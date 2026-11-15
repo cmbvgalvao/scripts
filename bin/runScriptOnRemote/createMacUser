@@ -1,8 +1,14 @@
 #!/bin/bash
+# Fill in a COPY of this file named createMacUser.local (ignored by git, so the
+# password never reaches this public repo), then run the copy with runOnHosts.
 LOCAL_FULLNAME=""     # The local user's full name
 LOCAL_SHORTNAME=""     # The local user's shortname
 LOCAL_PASSWORD=""      # The local user's password
 
 # Create a local admin user account
+if [ -z "$LOCAL_SHORTNAME" ] || [ -z "$LOCAL_PASSWORD" ]; then
+  echo "Fill in the account details in a .local copy of this script first." >&2
+  exit 1
+fi
 sudo sysadminctl -addUser "$LOCAL_SHORTNAME" -fullName "$LOCAL_FULLNAME" -password "$LOCAL_PASSWORD"
 sudo reboot now

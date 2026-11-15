@@ -1,5 +1,6 @@
 #!/bin/bash
-sudo chown -R $(whoami) /opt/homebrew
-(echo; echo 'eval "$(/opt/homebrew/bin/brew shellenv)"') >> ~/.zshrc
+sudo chown -R "$(id -un)" /opt/homebrew
+LINE='eval "$(/opt/homebrew/bin/brew shellenv)"'
+grep -qxF "$LINE" ~/.zshrc 2>/dev/null || (echo; echo "$LINE") >> ~/.zshrc
 eval "$(/opt/homebrew/bin/brew shellenv)"
-source .zshrc
+source ~/.zshrc
