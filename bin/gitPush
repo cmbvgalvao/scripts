@@ -7,6 +7,14 @@
 echo "Enter commit message: "
 read message
 git pull
-git add .
+
+# Show what would be committed, so a stray .env or key file is noticed
+git add -A --dry-run
+read -r -p "Commit and push all of the above? [y/N] " ok
+if [ "$ok" != "y" ] && [ "$ok" != "Y" ]; then
+  echo "Nothing committed."
+  exit 1
+fi
+git add -A
 git commit -m "$message"
 git push
