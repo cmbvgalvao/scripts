@@ -49,6 +49,7 @@ nicenumber()
    case $opt in
      d ) DD="$OPTARG" ;;
      t ) TD="$OPTARG" ;;
+     * ) echo "Usage: $(basename "$0") [-d c] [-t c] number" >&2; exit 1 ;;
    esac
 done
 shift $(($OPTIND - 1))
@@ -58,7 +59,7 @@ if [ $# -eq 0 ] ; then
   echo "Usage $(basename $0) [-d c ] [-t c] number"
   echo " -d specifies the decimal point delimiter"
   echo " -t specifies the thousands delimiter"
-  exit o
+  exit 1
 fi
 
 nicenumber $1 1 #Second arg forces nicenumber to 'echo' output.
