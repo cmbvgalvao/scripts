@@ -15,6 +15,9 @@ fi
 # Read the CSV file line by line
 while IFS=, read -r username hostname
 do
+  # CSV files saved on Windows end each line with \r
+  hostname=${hostname%$'\r'}
+  [ -z "$username" ] && continue
   # Skip the header line
   if [[ "$username" == "username" && "$hostname" == "hostname" ]]; then
     continue
