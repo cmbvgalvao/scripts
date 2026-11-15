@@ -1,2 +1,4 @@
 *~
 *.log
+# Filled-in copies of scripts (passwords, real names)
+*.local
