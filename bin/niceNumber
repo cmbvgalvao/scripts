@@ -38,6 +38,7 @@ nicenumber()
   if [ ! -z $2 ] ; then
     echo $nicenum
   fi
+}
 
   DD="." #Decimal point delimiter, to separate whole and fractional values
   TD="," #Thousands delimiter, to separate every three digits
@@ -65,5 +66,3 @@ fi
 nicenumber $1 1 #Second arg forces nicenumber to 'echo' output.
 
 exit 0
-}
-
