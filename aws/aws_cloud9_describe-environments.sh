@@ -7,7 +7,7 @@ environment_ids=$(aws cloud9 list-environments --query "environmentIds" --output
 # Iterate over each environment ID to get usernames
 for env_id in $environment_ids; do
   # Get the name for each environment ID
-  env_name=$(aws cloud9 describe-environments --environment-id "$env_id" --query "environments[0].name" --output text)
+  env_name=$(aws cloud9 describe-environments --environment-ids "$env_id" --query "environments[0].name" --output text)
   
   echo "Environment ID: $env_id" >> $LIST 
   echo "Environment name: $env_name" >> $LIST
