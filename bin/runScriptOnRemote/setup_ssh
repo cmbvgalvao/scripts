@@ -1,7 +1,7 @@
-##!/bin/bash
+#!/bin/bash
 
-# Define the home directory (you can adjust this if needed)
-USER_HOME="/home/$(whoami)"
+# Home directory: $HOME works on Linux (/home/...) and macOS (/Users/...)
+USER_HOME="$HOME"
 
 # Check if the public key argument is provided
 if [ -z "$1" ]; then
@@ -28,8 +28,7 @@ chmod 700 "$USER_HOME/.ssh"
 chmod 600 "$USER_HOME/.ssh/authorized_keys"
 
 # Change the owner of the directory and file to the current user
-chown -R $(whoami):$(whoami) "$USER_HOME/.ssh"
+chown -R "$(id -un):$(id -gn)" "$USER_HOME/.ssh"
 
 # Print a message indicating that the key has been added
 echo "Public key has been added to authorized_keys with correct permissions."
-!/bin/bash
