@@ -14,6 +14,12 @@ Bash scripts I wrote while running IT for a bootcamp and its sister companies (2
 | `n8n/` | Run the n8n automation tool in Docker with a persistent volume. |
 | `bin/` | Linux admin helpers (fix `.gitconfig` ownership in home folders, remove old lab users, log Wi-Fi changes, set up SSH keys) and shell-scripting exercises (`inpath`, `niceNumber`, `normDate`, `validAlphaNum`) typed in from *Wicked Cool Shell Scripts* by Dave Taylor. |
 
+### macfleet demo
+
+![macfleet: install on a room of Macs, update 25 in parallel, rerun the 3 that failed](docs/macfleet-demo.gif)
+
+*Recorded with simulated Macs (a stand-in for `ssh`); the commands and output are macfleet's own.*
+
 ## Notes
 
 - Scripts that create accounts read passwords from variables that are empty in this repo; set them at run time and never commit them. `macfleet` asks for them instead and never writes them to a file.
