@@ -1,3 +1,4 @@
 #!/bin/bash
+# Payload for runOnHosts: shut the Mac down now.
 
 sudo shutdown -h now

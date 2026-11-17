@@ -1,5 +1,8 @@
 #!/bin/bash
+# Payload for runOnHosts: delete a local account, then restart the Mac.
+# Set USERNAME to the account (short) name before running.
 
 USERNAME=""
+
 sudo sysadminctl -deleteUser "$USERNAME"
 sudo reboot now

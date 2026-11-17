@@ -1,34 +1,30 @@
 #!/bin/bash
+# Authorise an SSH public key for the current user, so runOnHosts can log in
+# without a password. Works on macOS and Linux.
+#
+# Usage: setup_ssh <path_to_public_key>
 
-# Home directory: $HOME works on Linux (/home/...) and macOS (/Users/...)
-USER_HOME="$HOME"
+PUBLIC_KEY_PATH=$1
 
-# Check if the public key argument is provided
-if [ -z "$1" ]; then
+if [ -z "$PUBLIC_KEY_PATH" ]; then
   echo "Usage: $0 <path_to_public_key>"
   exit 1
 fi
 
-PUBLIC_KEY_PATH="$1"
-
-# Verify the public key file exists
 if [ ! -f "$PUBLIC_KEY_PATH" ]; then
   echo "Error: Public key file '$PUBLIC_KEY_PATH' does not exist."
   exit 2
 fi
 
-# Create the .ssh directory if it doesn't exist
-mkdir -p "$USER_HOME/.ssh"
+SSH_DIR="$HOME/.ssh"
+AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
 
-# Append the public key to the authorized_keys file
-cat "$PUBLIC_KEY_PATH" >> "$USER_HOME/.ssh/authorized_keys"
+mkdir -p "$SSH_DIR"
+cat "$PUBLIC_KEY_PATH" >> "$AUTHORIZED_KEYS"
 
-# Set the appropriate permissions
-chmod 700 "$USER_HOME/.ssh"
-chmod 600 "$USER_HOME/.ssh/authorized_keys"
+# sshd ignores keys whose files are too open or owned by someone else
+chmod 700 "$SSH_DIR"
+chmod 600 "$AUTHORIZED_KEYS"
+chown -R "$(id -un):$(id -gn)" "$SSH_DIR"
 
-# Change the owner of the directory and file to the current user
-chown -R "$(id -un):$(id -gn)" "$USER_HOME/.ssh"
-
-# Print a message indicating that the key has been added
 echo "Public key has been added to authorized_keys with correct permissions."

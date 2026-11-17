@@ -1,4 +1,6 @@
 #!/bin/bash
+# Payload for runOnHosts: install Visual Studio Code with Homebrew.
+# Uses the Intel-Mac Homebrew path (/usr/local); Apple Silicon has /opt/homebrew.
 
 brew=/usr/local/bin/brew
 
