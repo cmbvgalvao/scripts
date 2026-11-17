@@ -6,7 +6,7 @@
 # The remote_* functions run on the Macs: they're sent there with declare -f
 # shellcheck disable=SC2329
 
-PARALLEL_MAX=10                       # Macs at a time with --parallel
+PARALLEL_MAX=10                       # Macs at a time with --parallel (default)
 SSH_OPTS=(-o ConnectTimeout=10)       # don't hang on a Mac that's switched off
 
 usage() {
@@ -28,10 +28,13 @@ Job that runs on this Mac only (no hosts.csv):
   setup-ssh <public_key>  add a public key to ~/.ssh/authorized_keys
 
 Options:
-  -n, --dry-run     show the Macs and the script that would run, connect to nothing
-  -p, --parallel    work on up to 10 Macs at a time (needs SSH keys, see setup-ssh)
-  -y, --yes         don't ask before jobs that restart, shut down or delete
-  -h, --help        show this help
+  -n, --dry-run       show the Macs and the script that would run, connect to nothing
+  -p, --parallel [N]  work on N Macs at a time, 10 if N is left out
+                      (needs SSH keys, see setup-ssh)
+  -l, --log FILE      add this run to FILE: date, job, each Mac's result and
+                      output (passwords are never in it)
+  -y, --yes           don't ask before jobs that restart, shut down or delete
+  -h, --help          show this help
 
 hosts.csv has one "username,hostname" pair per line. A "username,hostname"
 header and blank lines are skipped. Macs that fail are saved to a new CSV in
@@ -163,11 +166,19 @@ report() {   # <index> <exit code>
 # ---------------------------------------------------------------------------
 # Main
 
-DRY_RUN=no; PARALLEL=no; ASSUME_YES=no
+DRY_RUN=no; PARALLEL=no; ASSUME_YES=no; LOG_FILE=""
 while [ $# -gt 0 ]; do
   case $1 in
     -n|--dry-run)  DRY_RUN=yes ;;
-    -p|--parallel) PARALLEL=yes ;;
+    -p|--parallel)
+      PARALLEL=yes
+      # N is optional: take the next word only if it's a number (jobs never are)
+      if [[ "$2" =~ ^[0-9]+$ ]]; then PARALLEL_MAX=$2; shift; fi ;;
+    --parallel=*)  PARALLEL=yes; PARALLEL_MAX=${1#*=} ;;
+    -l|--log)
+      [ -n "$2" ] || die "--log needs a file name"
+      LOG_FILE=$2; shift ;;
+    --log=*)       LOG_FILE=${1#*=} ;;
     -y|--yes)      ASSUME_YES=yes ;;
     -h|--help)     usage; exit 0 ;;
     -*)            die "unknown option '$1' (see macfleet --help)" ;;
@@ -175,6 +186,8 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+[[ "$PARALLEL_MAX" =~ ^[1-9][0-9]*$ ]] ||
+  die "--parallel needs a whole number of Macs, 1 or more (got '$PARALLEL_MAX')"
 
 JOB=$1
 case $JOB in
@@ -187,6 +200,7 @@ HOSTS_FILE=$2
 [ -n "$HOSTS_FILE" ] || die "missing hosts.csv (see macfleet --help)"
 [ -f "$HOSTS_FILE" ] || die "CSV file not found: $HOSTS_FILE"
 shift 2
+JOB_ARGS=("$@")      # for the log; passwords are asked for, never arguments
 
 RISKY=yes            # ask before running, unless --yes
 SHOWN=""             # what --dry-run prints, when it must differ from PAYLOAD
@@ -243,35 +257,74 @@ if [ "$RISKY" = yes ] && [ "$ASSUME_YES" = no ]; then
   [ "$answer" = yes ] || { echo "Stopped, nothing was done."; exit 1; }
 fi
 
+if [ -n "$LOG_FILE" ]; then
+  ( : >> "$LOG_FILE" ) 2>/dev/null || die "can't write to the log file: $LOG_FILE"
+  MODE="one at a time"; [ "$PARALLEL" = yes ] && MODE="$PARALLEL_MAX at a time"
+  {
+    echo "===== $(date '+%Y-%m-%d %H:%M:%S') macfleet $JOB $HOSTS_FILE${JOB_ARGS[*]:+ ${JOB_ARGS[*]}}"
+    echo "$WHAT on ${#HOSTS[@]} Mac(s), $MODE"
+  } >> "$LOG_FILE"
+fi
+
+# Add one Mac's result and output to the log (when there is one)
+log_host() {   # <index> <exit code> <output file>
+  [ -n "$LOG_FILE" ] || return 0
+  local result=OK line
+  [ "$2" -eq 0 ] || result="FAILED (exit $2)"
+  {
+    echo "--- ${HOSTS[$1]} (as ${USERS[$1]}): $result"
+    while IFS= read -r line || [ -n "$line" ]; do
+      # Mask the new account's password, in case anything on the Mac printed it
+      [ -n "$NEW_PASSWORD" ] && line=${line//"$NEW_PASSWORD"/********}
+      echo "    $line"
+    done < "$3"
+  } >> "$LOG_FILE"
+}
+
 OK=(); FAILED=()
+TMP=$(mktemp -d) || die "can't create a temporary folder"
+trap 'rm -rf "$TMP"' EXIT
+
 if [ "$PARALLEL" = yes ]; then
-  SSH_OPTS+=(-o BatchMode=yes)    # nobody can type SSH passwords for 10 Macs at once
-  TMP=$(mktemp -d) || die "can't create a temporary folder"
-  trap 'rm -rf "$TMP"' EXIT
+  SSH_OPTS+=(-o BatchMode=yes)    # nobody can type SSH passwords for many Macs at once
   echo "Working on ${#HOSTS[@]} Mac(s), up to $PARALLEL_MAX at a time..."
   running=0
   for i in "${!HOSTS[@]}"; do
     ( run_on_host "$i" > "$TMP/$i.out" 2>&1; echo $? > "$TMP/$i.rc" ) &
     running=$((running + 1))
-    if [ $running -ge $PARALLEL_MAX ]; then wait; running=0; fi
+    if [ "$running" -ge "$PARALLEL_MAX" ]; then wait; running=0; fi
   done
   wait
   for i in "${!HOSTS[@]}"; do      # print each Mac's output in one piece
     echo "=== ${HOSTS[$i]} (as ${USERS[$i]})"
     cat "$TMP/$i.out"
-    report "$i" "$(cat "$TMP/$i.rc")"
+    rc=$(cat "$TMP/$i.rc")
+    report "$i" "$rc"
+    log_host "$i" "$rc" "$TMP/$i.out"
   done
 else
   for i in "${!HOSTS[@]}"; do
     echo "=== ${HOSTS[$i]} (as ${USERS[$i]})"
-    run_on_host "$i"
-    report "$i" $?
+    if [ -n "$LOG_FILE" ]; then
+      # Show the output live and keep a copy for the log
+      run_on_host "$i" 2>&1 | tee "$TMP/$i.out"
+      rc=${PIPESTATUS[0]}
+    else
+      run_on_host "$i"
+      rc=$?
+    fi
+    report "$i" "$rc"
+    log_host "$i" "$rc" "$TMP/$i.out"
   done
 fi
 
+SUMMARY="Done: ${#OK[@]} OK, ${#FAILED[@]} failed."
 echo
-echo "Done: ${#OK[@]} OK, ${#FAILED[@]} failed."
-[ ${#FAILED[@]} -eq 0 ] && exit 0
+echo "$SUMMARY"
+if [ ${#FAILED[@]} -eq 0 ]; then
+  [ -n "$LOG_FILE" ] && { echo "$SUMMARY"; echo; } >> "$LOG_FILE"
+  exit 0
+fi
 
 FAILED_FILE="macfleet-failed-$(date +%Y%m%d-%H%M%S).csv"
 {
@@ -281,4 +334,5 @@ FAILED_FILE="macfleet-failed-$(date +%Y%m%d-%H%M%S).csv"
 echo "Failed:"
 for i in "${FAILED[@]}"; do echo "  ${HOSTS[$i]}"; done
 echo "Saved to $FAILED_FILE. To rerun on just those: macfleet $JOB $FAILED_FILE ..."
+[ -n "$LOG_FILE" ] && { echo "$SUMMARY Failed Macs saved to $FAILED_FILE"; echo; } >> "$LOG_FILE"
 exit 1
