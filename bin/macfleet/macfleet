@@ -1,0 +1,284 @@
+#!/bin/bash
+# macfleet: run admin jobs on many Macs over SSH, all from one command.
+# The same jobs as the separate scripts in bin/runScriptOnRemote (which still
+# work). Written for bash 3.2, the version that ships with macOS.
+
+# The remote_* functions run on the Macs: they're sent there with declare -f
+# shellcheck disable=SC2329
+
+PARALLEL_MAX=10                       # Macs at a time with --parallel
+SSH_OPTS=(-o ConnectTimeout=10)       # don't hang on a Mac that's switched off
+
+usage() {
+  cat <<'EOF'
+Usage: macfleet [options] <job> <hosts.csv> [job arguments]
+
+Jobs that run on every Mac in hosts.csv:
+  run <script>          run any local script
+  add-user              create a standard account (asks for the details), then restart
+  add-admin             create an admin account (asks for the details), then restart
+  delete-user <name>    delete an account, then restart
+  install <cask>...     install apps with Homebrew, e.g. visual-studio-code blender
+  install-brew          install Homebrew (and put it on PATH on Apple Silicon)
+  update                install all macOS updates, restarting if one needs it
+  restart               restart now
+  shutdown              shut down now
+
+Job that runs on this Mac only (no hosts.csv):
+  setup-ssh <public_key>  add a public key to ~/.ssh/authorized_keys
+
+Options:
+  -n, --dry-run     show the Macs and the script that would run, connect to nothing
+  -p, --parallel    work on up to 10 Macs at a time (needs SSH keys, see setup-ssh)
+  -y, --yes         don't ask before jobs that restart, shut down or delete
+  -h, --help        show this help
+
+hosts.csv has one "username,hostname" pair per line. A "username,hostname"
+header and blank lines are skipped. Macs that fail are saved to a new CSV in
+the current folder, so the job can be rerun on just those.
+EOF
+}
+
+die() { echo "macfleet: $*" >&2; exit 2; }
+
+# ---------------------------------------------------------------------------
+# Jobs that run on each Mac. They are sent over SSH as text, so they may only
+# use what they get as arguments.
+
+remote_add_user() {   # <yes|no admin> <full name> <short name> <password>
+  local admin_flag=""
+  [ "$1" = yes ] && admin_flag=-admin
+  # shellcheck disable=SC2086  # admin_flag is empty or one word
+  sudo sysadminctl -addUser "$3" -fullName "$2" -password "$4" $admin_flag &&
+    sudo reboot now
+}
+
+remote_delete_user() {   # <short name>
+  if [ "$(id -un)" = "$1" ]; then
+    echo "Refusing to delete $1: it's the account this job is logged in with." >&2
+    return 1
+  fi
+  sudo sysadminctl -deleteUser "$1" && sudo reboot now
+}
+
+remote_install() {   # <cask>...
+  # Over SSH brew isn't on PATH, so use its full path: Apple Silicon or Intel
+  local brew=/usr/local/bin/brew
+  [ -x /opt/homebrew/bin/brew ] && brew=/opt/homebrew/bin/brew
+  "$brew" install --cask "$@"
+}
+
+remote_install_brew() {
+  NONINTERACTIVE=1 /bin/bash -c \
+    "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
+    </dev/null || return 1
+
+  # Apple Silicon: let this user manage Homebrew and add it to their zsh PATH once
+  if [ -d /opt/homebrew ]; then
+    # shellcheck disable=SC2016  # the line is written to .zshrc unexpanded
+    local line='eval "$(/opt/homebrew/bin/brew shellenv)"'
+    sudo chown -R "$(id -un)" /opt/homebrew
+    grep -qxF "$line" ~/.zshrc 2>/dev/null || (echo; echo "$line") >> ~/.zshrc
+  fi
+}
+
+remote_update()   { sudo softwareupdate -i -a -R; }
+remote_restart()  { sudo reboot now; }
+remote_shutdown() { sudo shutdown -h now; }
+
+# ---------------------------------------------------------------------------
+# Job that runs on this Mac
+
+local_setup_ssh() {   # <public key file>
+  local key=$1 ssh_dir="$HOME/.ssh"
+  [ -n "$key" ] || die "usage: macfleet setup-ssh <path_to_public_key>"
+  [ -f "$key" ] || die "public key file '$key' does not exist"
+
+  mkdir -p "$ssh_dir"
+  cat "$key" >> "$ssh_dir/authorized_keys"
+
+  # sshd ignores keys whose files are too open or owned by someone else
+  chmod 700 "$ssh_dir"
+  chmod 600 "$ssh_dir/authorized_keys"
+  chown -R "$(id -un):$(id -gn)" "$ssh_dir"
+  echo "Public key has been added to authorized_keys with correct permissions."
+}
+
+# ---------------------------------------------------------------------------
+# Helpers
+
+# Build the text sent to each Mac: the job's function, then a call to it
+build_payload() {   # <function> [args...]
+  local fn=$1; shift
+  echo '#!/bin/bash'
+  declare -f "$fn"
+  printf '%q ' "$fn" "$@"
+  echo
+}
+
+valid_account_name() { [[ "$1" =~ ^[a-z_][a-z0-9_.-]*$ ]]; }
+
+# Fill USERS and HOSTS from the CSV
+read_hosts() {   # <hosts.csv>
+  local username hostname
+  USERS=(); HOSTS=()
+  while IFS=, read -r username hostname || [ -n "$username$hostname" ]; do
+    username=${username%$'\r'}     # CSV files saved on Windows end lines with \r
+    hostname=${hostname%$'\r'}
+    [ -z "$username" ] && continue                                 # blank line
+    [ "$username,$hostname" = "username,hostname" ] && continue    # header
+    USERS+=("$username"); HOSTS+=("$hostname")
+  done < "$1"
+}
+
+ask_account_details() {   # sets NEW_FULLNAME NEW_SHORTNAME NEW_PASSWORD
+  local again
+  read -r -p "Full name: " NEW_FULLNAME
+  read -r -p "Short (account) name: " NEW_SHORTNAME
+  valid_account_name "$NEW_SHORTNAME" ||
+    die "'$NEW_SHORTNAME' isn't a valid account name (lowercase letters, digits, . _ -)"
+  read -r -s -p "Password: " NEW_PASSWORD; echo
+  read -r -s -p "Password again: " again; echo
+  [ -n "$NEW_PASSWORD" ] || die "the password can't be empty"
+  [ "$NEW_PASSWORD" = "$again" ] || die "the passwords don't match"
+}
+
+list_hosts() {
+  local i
+  for i in "${!HOSTS[@]}"; do echo "  ${HOSTS[$i]} (as ${USERS[$i]})"; done
+}
+
+run_on_host() {   # <index>
+  printf '%s\n' "$PAYLOAD" | ssh "${SSH_OPTS[@]}" "${USERS[$1]}@${HOSTS[$1]}" "bash -s"
+}
+
+report() {   # <index> <exit code>
+  if [ "$2" -eq 0 ]; then
+    echo "OK: ${HOSTS[$1]}"; OK+=("$1")
+  else
+    echo "FAILED: ${HOSTS[$1]}"; FAILED+=("$1")
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Main
+
+DRY_RUN=no; PARALLEL=no; ASSUME_YES=no
+while [ $# -gt 0 ]; do
+  case $1 in
+    -n|--dry-run)  DRY_RUN=yes ;;
+    -p|--parallel) PARALLEL=yes ;;
+    -y|--yes)      ASSUME_YES=yes ;;
+    -h|--help)     usage; exit 0 ;;
+    -*)            die "unknown option '$1' (see macfleet --help)" ;;
+    *)             break ;;
+  esac
+  shift
+done
+
+JOB=$1
+case $JOB in
+  "")        usage; exit 2 ;;
+  help)      usage; exit 0 ;;
+  setup-ssh) local_setup_ssh "$2"; exit ;;
+esac
+
+HOSTS_FILE=$2
+[ -n "$HOSTS_FILE" ] || die "missing hosts.csv (see macfleet --help)"
+[ -f "$HOSTS_FILE" ] || die "CSV file not found: $HOSTS_FILE"
+shift 2
+
+RISKY=yes            # ask before running, unless --yes
+SHOWN=""             # what --dry-run prints, when it must differ from PAYLOAD
+case $JOB in
+  run)
+    [ -f "$1" ] || die "script not found: ${1:-(none given)}"
+    WHAT="run $1"; RISKY=no
+    PAYLOAD=$(cat "$1") ;;
+  add-user|add-admin)
+    ADMIN=no; [ "$JOB" = add-admin ] && ADMIN=yes
+    ask_account_details
+    WHAT="create the account '$NEW_SHORTNAME' (admin: $ADMIN) and restart"
+    PAYLOAD=$(build_payload remote_add_user "$ADMIN" "$NEW_FULLNAME" "$NEW_SHORTNAME" "$NEW_PASSWORD")
+    SHOWN=$(build_payload remote_add_user "$ADMIN" "$NEW_FULLNAME" "$NEW_SHORTNAME" '********') ;;
+  delete-user)
+    valid_account_name "$1" || die "usage: macfleet delete-user <hosts.csv> <account name>"
+    WHAT="DELETE the account '$1' and restart"
+    PAYLOAD=$(build_payload remote_delete_user "$1") ;;
+  install)
+    [ $# -gt 0 ] || die "usage: macfleet install <hosts.csv> <cask>..."
+    WHAT="install $*"; RISKY=no
+    PAYLOAD=$(build_payload remote_install "$@") ;;
+  install-brew)
+    WHAT="install Homebrew"; RISKY=no
+    PAYLOAD=$(build_payload remote_install_brew) ;;
+  update)
+    WHAT="install all macOS updates (may restart)"
+    PAYLOAD=$(build_payload remote_update) ;;
+  restart)
+    WHAT="RESTART"
+    PAYLOAD=$(build_payload remote_restart) ;;
+  shutdown)
+    WHAT="SHUT DOWN"
+    PAYLOAD=$(build_payload remote_shutdown) ;;
+  *) die "unknown job '$JOB' (see macfleet --help)" ;;
+esac
+[ -n "$SHOWN" ] || SHOWN=$PAYLOAD
+
+read_hosts "$HOSTS_FILE"
+[ ${#HOSTS[@]} -gt 0 ] || die "no Macs listed in $HOSTS_FILE"
+
+if [ "$DRY_RUN" = yes ]; then
+  echo "Dry run: would $WHAT on ${#HOSTS[@]} Mac(s):"
+  list_hosts
+  echo "--- script sent to each Mac ---"
+  printf '%s\n' "$SHOWN"
+  exit 0
+fi
+
+if [ "$RISKY" = yes ] && [ "$ASSUME_YES" = no ]; then
+  echo "This will $WHAT on ${#HOSTS[@]} Mac(s):"
+  list_hosts
+  read -r -p "Type yes to go ahead: " answer
+  [ "$answer" = yes ] || { echo "Stopped, nothing was done."; exit 1; }
+fi
+
+OK=(); FAILED=()
+if [ "$PARALLEL" = yes ]; then
+  SSH_OPTS+=(-o BatchMode=yes)    # nobody can type SSH passwords for 10 Macs at once
+  TMP=$(mktemp -d) || die "can't create a temporary folder"
+  trap 'rm -rf "$TMP"' EXIT
+  echo "Working on ${#HOSTS[@]} Mac(s), up to $PARALLEL_MAX at a time..."
+  running=0
+  for i in "${!HOSTS[@]}"; do
+    ( run_on_host "$i" > "$TMP/$i.out" 2>&1; echo $? > "$TMP/$i.rc" ) &
+    running=$((running + 1))
+    if [ $running -ge $PARALLEL_MAX ]; then wait; running=0; fi
+  done
+  wait
+  for i in "${!HOSTS[@]}"; do      # print each Mac's output in one piece
+    echo "=== ${HOSTS[$i]} (as ${USERS[$i]})"
+    cat "$TMP/$i.out"
+    report "$i" "$(cat "$TMP/$i.rc")"
+  done
+else
+  for i in "${!HOSTS[@]}"; do
+    echo "=== ${HOSTS[$i]} (as ${USERS[$i]})"
+    run_on_host "$i"
+    report "$i" $?
+  done
+fi
+
+echo
+echo "Done: ${#OK[@]} OK, ${#FAILED[@]} failed."
+[ ${#FAILED[@]} -eq 0 ] && exit 0
+
+FAILED_FILE="macfleet-failed-$(date +%Y%m%d-%H%M%S).csv"
+{
+  echo "username,hostname"
+  for i in "${FAILED[@]}"; do echo "${USERS[$i]},${HOSTS[$i]}"; done
+} > "$FAILED_FILE"
+echo "Failed:"
+for i in "${FAILED[@]}"; do echo "  ${HOSTS[$i]}"; done
+echo "Saved to $FAILED_FILE. To rerun on just those: macfleet $JOB $FAILED_FILE ..."
+exit 1
