@@ -1,5 +1,11 @@
 #!/bin/bash
+# Payload for runOnHosts: install Visual Studio Code with Homebrew.
+# Over SSH brew isn't on PATH, so use its full path: Apple Silicon or Intel.
 
-brew=/usr/local/bin/brew
+if [ -x /opt/homebrew/bin/brew ]; then
+  brew=/opt/homebrew/bin/brew
+else
+  brew=/usr/local/bin/brew
+fi
 
-$brew install --cask visual-studio-code
+"$brew" install --cask visual-studio-code

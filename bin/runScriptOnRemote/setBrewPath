@@ -1,6 +1,13 @@
 #!/bin/bash
+# Payload for runOnHosts: make Homebrew on Apple Silicon (/opt/homebrew) usable
+# by the current user and put it on their zsh PATH.
+
+BREW_SHELLENV='eval "$(/opt/homebrew/bin/brew shellenv)"'
+
 sudo chown -R "$(id -un)" /opt/homebrew
-LINE='eval "$(/opt/homebrew/bin/brew shellenv)"'
-grep -qxF "$LINE" ~/.zshrc 2>/dev/null || (echo; echo "$LINE") >> ~/.zshrc
+
+# Add the shellenv line to ~/.zshrc once (after a blank line), never twice
+grep -qxF "$BREW_SHELLENV" ~/.zshrc 2>/dev/null || (echo; echo "$BREW_SHELLENV") >> ~/.zshrc
+
 eval "$(/opt/homebrew/bin/brew shellenv)"
 source ~/.zshrc

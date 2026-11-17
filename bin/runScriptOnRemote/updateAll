@@ -1,3 +1,5 @@
 #!/bin/bash
+# Payload for runOnHosts: install every available macOS update, restarting if
+# an update needs it (-R).
 
 sudo softwareupdate -i -a -R

@@ -1,3 +1,4 @@
 #!/bin/bash
+# Payload for runOnHosts: restart the Mac now.
 
 sudo reboot now

@@ -1,3 +1,5 @@
 #!/bin/bash
+# Payload for runOnHosts: install Homebrew with its official installer.
+# On Apple Silicon Macs, run setBrewPath afterwards.
 
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
