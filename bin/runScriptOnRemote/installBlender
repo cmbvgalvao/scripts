@@ -1,7 +1,11 @@
 #!/bin/bash
 # Payload for runOnHosts: install Blender with Homebrew.
-# Uses the Intel-Mac Homebrew path (/usr/local); Apple Silicon has /opt/homebrew.
+# Over SSH brew isn't on PATH, so use its full path: Apple Silicon or Intel.
 
-brew=/usr/local/bin/brew
+if [ -x /opt/homebrew/bin/brew ]; then
+  brew=/opt/homebrew/bin/brew
+else
+  brew=/usr/local/bin/brew
+fi
 
-$brew install --cask blender
+"$brew" install --cask blender

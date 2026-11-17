@@ -4,5 +4,10 @@
 
 USERNAME=""
 
+if [ -z "$USERNAME" ]; then
+  echo "Set USERNAME at the top of this script first." >&2
+  exit 1
+fi
+
 sudo sysadminctl -deleteUser "$USERNAME"
 sudo reboot now
